@@ -280,33 +280,46 @@ else:
     # Main drag-and-drop interface
     st.markdown("### Current Article Sequence")
     st.info("💡 **Instructions:** Drag articles between sections to reorganize. Use the dropdown above to read articles.")
-    
-    # Prepare current items for sortable (include all sections, even empty)
+
+    # 【修改 1】构建带唯一 ID 的列表项
+    # 格式： "标题|||ID" (这样即使标题相同，React 也能区分)
     current_items = []
     for section in LOCATION_ORDER:
-        section_items = [article['title'] for article in st.session_state.articles.get(section, [])]
+        section_items = []
+        for article in st.session_state.articles.get(section, []):
+            # 拼接 ID 确保唯一性
+            unique_item = f"{article['title']}|||{article['id']}"
+            section_items.append(unique_item)
         current_items.append({'header': section, 'items': section_items})
-    
-    # 使用动态 key，包含版本号
-    # 这样每次 update 发生后，key 会改变，强制组件重新挂载（Remount），避免 React 更新死循环
-    sort_key = f"multi_sort_{st.session_state.sort_version}"
-    sorted_items = sort_items(current_items, multi_containers=True, direction='vertical', key=sort_key)
-    
+
+    # 【修改 2】恢复静态 Key
+    # 使用固定 key 让 React 复用组件，避免反复卸载/挂载导致的初始化循环
+    sorted_items = sort_items(current_items, multi_containers=True, direction='vertical', key="multi_sort")
+
     # If order changed, update session state
     if sorted_items != current_items:
         updated_articles = {section: [] for section in LOCATION_ORDER}
+        
         for container in sorted_items:
             section = container['header']
-            if section in updated_articles:  # Ensure it's a valid section
-                for title in container['items']:
-                    article, _ = get_article_by_title(title)
+            if section in updated_articles:
+                for item_str in container['items']:
+                    # 【修改 3】解析回原始文章
+                    # 如果包含分隔符，则拆分；否则（兼容旧数据）直接用标题
+                    if "|||" in item_str:
+                        title_part, id_part = item_str.rsplit("|||", 1)
+                        # 优先通过 ID 查找（最准确）
+                        article, _ = get_article_by_id(id_part)
+                        # 如果 ID 找不到（极少见），再尝试标题
+                        if not article:
+                            article, _ = get_article_by_title(title_part)
+                    else:
+                        article, _ = get_article_by_title(item_str)
+                        
                     if article:
                         updated_articles[section].append(article)
-        st.session_state.articles = updated_articles
-
-        # 增加排序版本号，确保下一次渲染时 key 变化
-        st.session_state.sort_version += 1
         
+        st.session_state.articles = updated_articles
         st.rerun()
     
     # Show empty sections info
