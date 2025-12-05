@@ -115,6 +115,10 @@ if 'show_stats' not in st.session_state:
 if 'dropdown_selection' not in st.session_state:
     st.session_state.dropdown_selection = ""
 
+# 初始化一个排序版本号
+if 'sort_version' not in st.session_state:
+    st.session_state.sort_version = 0
+
 # Helper functions
 def get_article_by_id(article_id):
     for section, articles in st.session_state.articles.items():
@@ -283,8 +287,10 @@ else:
         section_items = [article['title'] for article in st.session_state.articles.get(section, [])]
         current_items.append({'header': section, 'items': section_items})
     
-    # Render sortable with multi-containers
-    sorted_items = sort_items(current_items, multi_containers=True, direction='vertical', key="multi_sort")
+    # 使用动态 key，包含版本号
+    # 这样每次 update 发生后，key 会改变，强制组件重新挂载（Remount），避免 React 更新死循环
+    sort_key = f"multi_sort_{st.session_state.sort_version}"
+    sorted_items = sort_items(current_items, multi_containers=True, direction='vertical', key=sort_key)
     
     # If order changed, update session state
     if sorted_items != current_items:
@@ -297,6 +303,10 @@ else:
                     if article:
                         updated_articles[section].append(article)
         st.session_state.articles = updated_articles
+
+        # 增加排序版本号，确保下一次渲染时 key 变化
+        st.session_state.sort_version += 1
+        
         st.rerun()
     
     # Show empty sections info
